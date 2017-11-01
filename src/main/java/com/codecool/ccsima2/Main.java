@@ -42,7 +42,9 @@ public class Main {
         System.out.println("Logging in");
         writeLoginRequest();
 
-        int bugs = 0;
+        int bugsToFix = 0;
+        int bugsFixed = 0;
+        boolean noMoreBugs = false;
 
         ResponseClass.Response.Reader rr;
         do {
@@ -58,7 +60,11 @@ public class Main {
 
             if (rr.hasStatus()) {
                 Text.Reader sr = rr.getStatus();
-                System.out.printf("Got status: %s%n", sr.toString());
+                String status = sr.toString();
+                if (status.contains("You fixed all the bugs!")) {
+                    noMoreBugs = true;
+                }
+                System.out.printf("Got status: %s%n", status);
             } else {
                 System.out.println("No status");
             }
@@ -73,18 +79,21 @@ public class Main {
                 }
 
 
-                bugs = br.getBugs();
-                System.out.printf("Bugs to fix: %s%n", bugs);
+                bugsToFix = br.getBugs();
+                System.out.printf("Bugs to fix: %s%n", bugsToFix);
             } else {
                 System.out.println("No bugfix");
             }
 
-            if (bugs > 0) {
-                System.out.printf("Still fixing bugs (%s remaining)%n", bugs);
+            if (noMoreBugs) {
+                System.out.printf("Phew, fixed %s%n", bugsFixed);
 
-                writeBugfixRequest("Fixed", --bugs);
-            } else if (bugs == 0) {
-                System.out.println("Huh?");
+                writeBugfixRequest("I solved a huge amount of bug. I am proud of myself.", bugsFixed);
+            } else if (bugsToFix >= 0) {
+                System.out.printf("Still fixing bugsToFix (%s remaining)%n", bugsToFix);
+
+                writeBugfixRequest("Fixed", --bugsToFix);
+                bugsFixed++;
             } else {
                 throw new IllegalStateException();
             }
