@@ -1,0 +1,5 @@
+= Running
+
+* Import the Maven project into IntelliJ IDEA
+* Create a run configuration for the `Main` class
+** In the run configuration set the program arguments: `<TEAM> <HASH> <HOST> <PORT>`
