@@ -1,45 +1,26 @@
-package com.codecool.ccsima2;
+package com.codecool.ccsima2.preliminary;
 
-import com.codecool.ccsima2.preliminary.BugfixClass;
-import com.codecool.ccsima2.preliminary.RequestClass;
-import com.codecool.ccsima2.preliminary.ResponseClass;
+import com.codecool.ccsima2.AbstractMain;
 import org.capnproto.MessageBuilder;
-import org.capnproto.Serialize;
 import org.capnproto.Text;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.nio.channels.SocketChannel;
 
-public class Main {
+public class Main extends AbstractMain {
 
     public static void main(String[] args) throws IOException {
         String team = args[0];
         String hash = args[1];
         String host = args[2];
         int port = Integer.valueOf(args[3]);
-        new Main(team, hash, host, port).solveBugs();
+        new Main(team, hash, host, port).solve();
     }
-
-    private final String team;
-    private final String hash;
-    private final String host;
-    private final int port;
-    private final SocketAddress addr;
-
-    private SocketChannel sc;
 
     private Main(String team, String hash, String host, int port) {
-        this.team = team;
-        this.hash = hash;
-        this.host = host;
-        this.port = port;
-
-        addr = new InetSocketAddress(host, port);
+        super(team, hash, host, port);
     }
 
-    private void solveBugs() throws IOException {
+    protected void solve() throws IOException {
         System.out.println("Connecting");
         connectToClient();
         System.out.println("Logging in");
@@ -103,10 +84,6 @@ public class Main {
         } while (!rr.getEnd());
     }
 
-    private void connectToClient() throws IOException {
-        sc = SocketChannel.open(addr);
-    }
-
     private void writeBugfixRequest(String message, int bugs) throws IOException {
         MessageBuilder mb = new MessageBuilder();
         RequestClass.Request.Builder rb = mb.initRoot(RequestClass.Request.factory);
@@ -126,13 +103,5 @@ public class Main {
         lb.setHash(hash);
 
         writeRequest(mb);
-    }
-
-    private void writeRequest(MessageBuilder mb) throws IOException {
-        Serialize.write(sc, mb);
-    }
-
-    private ResponseClass.Response.Reader readResponse() throws IOException {
-        return Serialize.read(sc).getRoot(ResponseClass.Response.factory);
     }
 }
