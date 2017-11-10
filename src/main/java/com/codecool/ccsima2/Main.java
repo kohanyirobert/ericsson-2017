@@ -1,5 +1,8 @@
 package com.codecool.ccsima2;
 
+import com.codecool.ccsima2.preliminary.BugfixClass;
+import com.codecool.ccsima2.preliminary.RequestClass;
+import com.codecool.ccsima2.preliminary.ResponseClass;
 import org.capnproto.MessageBuilder;
 import org.capnproto.Serialize;
 import org.capnproto.Text;

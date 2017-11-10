@@ -1,7 +1,7 @@
 @0xecc23a6ce1dbd595;
 
 using Java = import "/java.capnp";
-$Java.package("com.codecool.ccsima2");
+$Java.package("com.codecool.ccsima2.preliminary");
 $Java.outerClassname("RequestClass");
 
 using import "Bugfix.capnp".Bugfix;
