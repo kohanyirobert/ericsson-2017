@@ -34,7 +34,7 @@ public class Main extends AbstractMain {
         do {
             System.out.println("----------------");
             System.out.println("Reading response");
-            rr = readResponse();
+            rr = readResponse(ResponseClass.Response.factory);
 
             if (rr.getEnd()) {
                 System.out.println("We're done");

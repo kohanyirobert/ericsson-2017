@@ -1,8 +1,10 @@
 package com.codecool.ccsima2;
 
 import com.codecool.ccsima2.preliminary.ResponseClass;
+import org.capnproto.FromPointerReader;
 import org.capnproto.MessageBuilder;
 import org.capnproto.Serialize;
+import org.capnproto.StructReader;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -39,7 +41,7 @@ public abstract class AbstractMain {
         Serialize.write(sc, mb);
     }
 
-    protected ResponseClass.Response.Reader readResponse() throws IOException {
-        return Serialize.read(sc).getRoot(ResponseClass.Response.factory);
+    protected <T> T readResponse(FromPointerReader<T> factory) throws IOException {
+        return Serialize.read(sc).getRoot(factory);
     }
 }
