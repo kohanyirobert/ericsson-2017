@@ -1,11 +1,8 @@
 @0xf0897c6777e66a25;
 
-using Java = import "java.capnp";
-$Java.package("org.ericsson2017.protocol.semifinal");
+using Java = import "/java.capnp";
+$Java.package("com.codecool.ccsima2.semifinal");
 $Java.outerClassname("CommonClass");
-
-# using Cxx = import "/capnp/c++.capnp";
-# $Cxx.namespace("ericsson2017::protocol::semifinal");
 
 enum Direction {
     up @0;
