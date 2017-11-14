@@ -1,14 +1,29 @@
 package com.codecool.ccsima2.semifinal;
 
 import com.codecool.ccsima2.AbstractMain;
+import com.googlecode.lanterna.TextCharacter;
+import com.googlecode.lanterna.TextColor;
+import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.KeyType;
+import com.googlecode.lanterna.screen.TerminalScreen;
+import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
+import com.googlecode.lanterna.terminal.Terminal;
 import org.capnproto.ListList;
 import org.capnproto.MessageBuilder;
 import org.capnproto.StructList;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Scanner;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Main extends AbstractMain {
+
+    private static final Logger LOG = LoggerFactory.getLogger(Main.class);
+
+    private static final int WIDTH = 80;
+    private static final int HEIGHT = 100;
 
     private static abstract class Field {
 
@@ -77,155 +92,191 @@ public class Main extends AbstractMain {
         new Main(team, hash, host, port).solve();
     }
 
-    private final Field[][] board = new Field[80][100];
-
     private Main(String team, String hash, String host, int port) {
         super(team, hash, host, port);
     }
 
+    private <T extends Field> boolean has(List<T> fields, int x, int y) {
+        for (T field : fields) {
+            // need to switch x and y for some reason
+            if (y == field.getX() && x == field.getY()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     protected void solve() throws IOException {
-        System.out.println("Connecting");
+        DefaultTerminalFactory defaultTerminalFactory = new DefaultTerminalFactory();
+        Terminal terminal = defaultTerminalFactory.createTerminal();
+        TerminalScreen screen = new TerminalScreen(terminal);
+        screen.setCursorPosition(null);
+        screen.startScreen();
+
+        LOG.info("Connecting");
         connectToClient();
-        System.out.println("Logging in");
+        LOG.info("Logging in");
         writeLoginCommand();
+
+        List<UnitField> currentUnits = new ArrayList<>();
+        List<EnemyField> currentEnemies = new ArrayList<>();
 
         ResponseClass.Response.Reader rr;
         while (true) {
-            System.out.println("----------------");
-            System.out.println("Reading response");
+            currentUnits.clear();
+            currentEnemies.clear();
+
+            LOG.info("----------------");
+            LOG.info("Reading response");
             rr = readResponse(ResponseClass.Response.factory);
 
             ResponseClass.Response.Info.Reader ir = rr.getInfo();
-            System.out.printf("Level: %s%n", ir.getLevel());
-            System.out.printf("Owns: %s%n", ir.getOwns());
-            System.out.printf("Tick: %s%n", ir.getTick());
+            LOG.info("Level: {}", ir.getLevel());
+            LOG.info("Owns: {}", ir.getOwns());
+            LOG.info("Tick: {}", ir.getTick());
 
             if (rr.hasUnits()) {
                 StructList.Reader<ResponseClass.Unit.Reader> units = rr.getUnits();
                 for (int i = 0; i < units.size(); i++) {
                     ResponseClass.Unit.Reader ur = units.get(i);
-                    System.out.print("Unit: ");
-                    System.out.printf("o=%s, ", ur.getOwner());
-                    System.out.printf("h=%s, ", ur.getHealth());
-                    System.out.printf("k=%s, ", ur.getKiller());
                     CommonClass.Direction dr = ur.getDirection();
-                    System.out.printf("%s ,", dr);
                     if (ur.hasPosition()) {
                         CommonClass.Position.Reader pr = ur.getPosition();
                         int x = pr.getX();
                         int y = pr.getY();
-                        System.out.format("(%s,%s)", x, y);
-
-                        board[x][y] = new UnitField(i, pr.getX(), pr.getY(), ur.getDirection());
+                        LOG.info("Unit o={},h={}, k={}, {}, x,y=({},{})",
+                                ur.getOwner(),
+                                ur.getHealth(),
+                                ur.getKiller(),
+                                ur.getDirection(),
+                                x,
+                                y);
+                        currentUnits.add(new UnitField(i, pr.getX(), pr.getY(), ur.getDirection()));
                     } else {
                         System.out.print("no position");
                     }
-                    System.out.println();
+                    LOG.info("");
                 }
             } else {
-                System.out.println("No units");
+                LOG.info("No units");
             }
 
             if (rr.hasEnemies()) {
                 StructList.Reader<ResponseClass.Enemy.Reader> enemies = rr.getEnemies();
                 for (int i = 0; i < enemies.size(); i++) {
                     ResponseClass.Enemy.Reader er = enemies.get(i);
-                    System.out.print("Enemy: ");
                     ResponseClass.Enemy.Direction.Reader dr = er.getDirection();
                     CommonClass.Direction horizontal = dr.getHorizontal();
                     CommonClass.Direction vertical = dr.getVertical();
-                    System.out.printf("v=%s,h=%s, ", horizontal, vertical);
                     if (er.hasPosition()) {
                         CommonClass.Position.Reader pr = er.getPosition();
                         int x = pr.getX();
                         int y = pr.getY();
-                        System.out.format("(%s,%s)", x, y);
+                        LOG.info("Enemy: v={},h={}, x,y=({},{})", horizontal, vertical, x, y);
 
-                        board[x][y] = new EnemyField(x, y, horizontal, vertical);
+                        currentEnemies.add(new EnemyField(x, y, horizontal, vertical));
                     } else {
-                        System.out.print("no position");
+                        LOG.info("Enemy: no position");
                     }
-                    System.out.println();
+                    LOG.info("");
                 }
             } else {
-                System.out.println("No enemies");
+                LOG.info("No enemies");
             }
 
             if (rr.hasStatus()) {
-                System.out.println(rr.getStatus());
+                LOG.info("Status: " + rr.getStatus());
             } else {
-                System.out.println("No status");
+                LOG.info("No status");
             }
 
             if (rr.hasCells()) {
                 ListList.Reader<StructList.Reader<ResponseClass.Cell.Reader>> cells = rr.getCells();
+                OUTER:
                 for (int i = 0; i < cells.size(); i++) {
                     StructList.Reader<ResponseClass.Cell.Reader> row = cells.get(i);
+                    INNER:
                     for (int j = 0; j < row.size(); j++) {
                         ResponseClass.Cell.Reader cr = row.get(j);
                         ResponseClass.Cell.Attack.Reader ca = cr.getAttack();
-                        if (ca.isUnit()) {
-                            System.out.print(ca.getUnit());
-                        } else if (ca.isCan()) {
-                            String c;
-                            if (board[i][j] instanceof UnitField) {
-                                c = "@";
-                            } else if (board[i][j] instanceof EnemyField) {
-                                c = "!";
-                            } else if (cr.getOwner() == 0) {
-                                c = ca.getCan() ? "+" : "-";
+
+                        int x = j;
+                        int y = i;
+
+                        char c = '?';
+                        TextColor fg = TextColor.ANSI.DEFAULT;
+                        TextColor bg = TextColor.ANSI.DEFAULT;
+
+                        if (has(currentUnits, x, y)) {
+                            c = '@';
+                            fg = TextColor.ANSI.GREEN;
+                        } else if (has(currentEnemies, x, y)) {
+                            c = '@';
+                            fg = TextColor.ANSI.RED;
+                        } else {
+                            if (ca.isUnit()) {
+                                int owner = cr.getOwner();
+                                if (owner == 0) {
+                                    c = '@';
+                                    fg = TextColor.ANSI.GREEN;
+                                } else {
+                                    c = 'Y';
+                                }
+                            } else if (ca.isCan()) {
+                                int owner = cr.getOwner();
+                                boolean can = ca.getCan();
+                                if (owner == 0) {
+                                    if (can) {
+                                        c = ' ';
+                                    } else {
+                                        c = '?';
+                                    }
+                                } else {
+                                    if (can) {
+                                        c = '~';
+                                    } else {
+                                        c = '+';
+                                    }
+                                }
                             } else {
-                                c = ca.getCan() ? "_" : "#";
+                                throw new IllegalStateException();
                             }
-                            System.out.print(c);
                         }
+
+                        screen.setCharacter(x, y, new TextCharacter(c, fg, bg));
                     }
-                    System.out.println();
+                    screen.refresh();
+                    screen.doResizeIfNecessary();
                 }
 
-                Scanner scanner = new Scanner(System.in);
-                String line = scanner.nextLine();
-
                 CommonClass.Direction direction = null;
-                switch (line) {
-                    case "w":
-                        direction = CommonClass.Direction.UP;
-                        break;
-                    case "s":
-                        direction = CommonClass.Direction.DOWN;
-                        break;
-                    case "a":
-                        direction = CommonClass.Direction.LEFT;
-                        break;
-                    case "d":
-                        direction = CommonClass.Direction.RIGHT;
-                        break;
-                    default:
-                        System.out.println("No direction change");
+                KeyStroke keyStroke = screen.pollInput();
+                if (keyStroke != null && keyStroke.getKeyType() == KeyType.Character) {
+                    switch (keyStroke.getCharacter()) {
+                        case 'w':
+                            direction = CommonClass.Direction.UP;
+                            break;
+                        case 's':
+                            direction = CommonClass.Direction.DOWN;
+                            break;
+                        case 'a':
+                            direction = CommonClass.Direction.LEFT;
+                            break;
+                        case 'd':
+                            direction = CommonClass.Direction.RIGHT;
+                            break;
+                        default:
+                            LOG.info("No direction change");
+                    }
                 }
 
                 if (direction != null) {
+                    if (currentUnits.size() > 1) {
+                        throw new IllegalStateException();
+                    }
                     writeMoveCommand(0, direction);
                 }
-
-                /*
-                for (int i = 0; i < board.length; i++) {
-                    if (board[i] == null) {
-                        continue;
-                    }
-                    for (int j = 0; j < board[i].length; j++) {
-                        Field f = board[i][j];
-                        if (f instanceof UnitField) {
-                            UnitField uf = (UnitField) f;
-                            if (uf.getDirection() != CommonClass.Direction.RIGHT) {
-                                writeMoveCommand(uf.getId(), CommonClass.Direction.RIGHT);
-                            }
-                        }
-                    }
-                }
-                */
             }
-
         }
     }
 
