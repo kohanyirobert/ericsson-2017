@@ -14,13 +14,6 @@
             <artifactId>runtime</artifactId>
             <version>0.1.1</version>
         </dependency>
-        <dependency>
-            <groupId>jcurses</groupId>
-            <artifactId>jcurses-windows</artifactId>
-            <version>0.9.5b</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/lib/jcurses.jar</systemPath>
-        </dependency>
     </dependencies>
     <build>
         <plugins>
