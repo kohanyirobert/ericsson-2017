@@ -1,6 +1,7 @@
 package com.codecool.ccsima2.semifinal;
 
 import com.codecool.ccsima2.AbstractMain;
+import com.codecool.ccsima2.semifinal.field.*;
 import com.googlecode.lanterna.TextCharacter;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.input.KeyStroke;
@@ -16,73 +17,17 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class Main extends AbstractMain {
 
     private static final Logger LOG = LoggerFactory.getLogger(Main.class);
 
-    private static final int WIDTH = 80;
-    private static final int HEIGHT = 100;
-
-    private static abstract class Field {
-
-        private final int x;
-        private final int y;
-
-        Field(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
-
-        public int getX() {
-            return x;
-        }
-
-        public int getY() {
-            return y;
-        }
-    }
-
-    private static final class UnitField extends Field {
-
-        private final int id;
-        private final CommonClass.Direction direction;
-
-        UnitField(int id, int x, int y, CommonClass.Direction direction) {
-            super(x, y);
-            this.id = id;
-            this.direction = direction;
-        }
-
-        public int getId() {
-            return id;
-        }
-
-        public CommonClass.Direction getDirection() {
-            return direction;
-        }
-    }
-
-    private static final class EnemyField extends Field {
-
-        private final CommonClass.Direction horizontal;
-        private final CommonClass.Direction vertical;
-
-        EnemyField(int x, int y, CommonClass.Direction horizontal, CommonClass.Direction vertical) {
-            super(x, y);
-            this.horizontal = horizontal;
-            this.vertical = vertical;
-        }
-
-        public CommonClass.Direction getHorizontal() {
-            return horizontal;
-        }
-
-        public CommonClass.Direction getVertical() {
-            return vertical;
-        }
-    }
+    private static final int UNIT_ID = 0;
+    private static final int TEAM_ID = 1;
+    private static final int ROWS = 80;
+    private static final int COLUMNS = 100;
 
     public static void main(String[] args) throws IOException {
         String team = args[0];
@@ -96,188 +41,290 @@ public class Main extends AbstractMain {
         super(team, hash, host, port);
     }
 
-    private <T extends Field> boolean has(List<T> fields, int x, int y) {
-        for (T field : fields) {
-            // need to switch x and y for some reason
-            if (y == field.getX() && x == field.getY()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     protected void solve() throws IOException {
-        DefaultTerminalFactory defaultTerminalFactory = new DefaultTerminalFactory();
-        Terminal terminal = defaultTerminalFactory.createTerminal();
-        TerminalScreen screen = new TerminalScreen(terminal);
-        screen.setCursorPosition(null);
-        screen.startScreen();
-
         LOG.info("Connecting");
         connectToClient();
         LOG.info("Logging in");
         writeLoginCommand();
 
-        List<UnitField> currentUnits = new ArrayList<>();
-        List<EnemyField> currentEnemies = new ArrayList<>();
-
-        ResponseClass.Response.Reader rr;
-        while (true) {
-            currentUnits.clear();
-            currentEnemies.clear();
-
-            LOG.info("----------------");
+        TerminalScreen screen = createDisplay();
+        Field[][] board = new Field[ROWS][COLUMNS];
+        List<UnitField> units = new ArrayList<>();
+        List<EnemyField> enemies = new ArrayList<>();
+        do {
+            clearFields(board);
+            units.clear();
+            enemies.clear();
             LOG.info("Reading response");
-            rr = readResponse(ResponseClass.Response.factory);
+            ResponseClass.Response.Reader responseReader = readResponse(ResponseClass.Response.factory);
+            updateInfoAndShowStatus(responseReader);
+            fillTerrainFields(board, responseReader);
+            fillEnemyFields(board, enemies, responseReader);
+            fillUnitFields(board, units, responseReader);
+            checkNullOrUnknownFields(board);
+            calcTerritory(board);
+            sortUnitsById(units);
+            List<CommonClass.Direction> directions = calcUnitDirections(board, units, enemies, screen);
+            displayFields(board, screen);
+            sendUnitMoveReply(directions);
+        } while (true);
+    }
 
-            ResponseClass.Response.Info.Reader ir = rr.getInfo();
-            LOG.info("Level: {}", ir.getLevel());
-            LOG.info("Owns: {}", ir.getOwns());
-            LOG.info("Tick: {}", ir.getTick());
+    private TerminalScreen createDisplay() throws IOException {
+        DefaultTerminalFactory defaultTerminalFactory = new DefaultTerminalFactory();
+        Terminal terminal = defaultTerminalFactory.createTerminal();
+        TerminalScreen screen = new TerminalScreen(terminal);
+        screen.setCursorPosition(null);
+        screen.startScreen();
+        return screen;
+    }
 
-            if (rr.hasUnits()) {
-                StructList.Reader<ResponseClass.Unit.Reader> units = rr.getUnits();
-                for (int i = 0; i < units.size(); i++) {
-                    ResponseClass.Unit.Reader ur = units.get(i);
-                    CommonClass.Direction dr = ur.getDirection();
-                    if (ur.hasPosition()) {
-                        CommonClass.Position.Reader pr = ur.getPosition();
-                        int x = pr.getX();
-                        int y = pr.getY();
-                        LOG.info("Unit o={},h={}, k={}, {}, x,y=({},{})",
-                                ur.getOwner(),
-                                ur.getHealth(),
-                                ur.getKiller(),
-                                ur.getDirection(),
-                                x,
-                                y);
-                        currentUnits.add(new UnitField(i, pr.getX(), pr.getY(), ur.getDirection()));
-                    } else {
-                        System.out.print("no position");
-                    }
-                    LOG.info("");
-                }
-            } else {
-                LOG.info("No units");
+    private void clearFields(Field[][] board) {
+        for (int i = 0; i < ROWS; i++) {
+            for (int j = 0; j < COLUMNS; j++) {
+                board[i][j] = null;
             }
+        }
+    }
 
-            if (rr.hasEnemies()) {
-                StructList.Reader<ResponseClass.Enemy.Reader> enemies = rr.getEnemies();
-                for (int i = 0; i < enemies.size(); i++) {
-                    ResponseClass.Enemy.Reader er = enemies.get(i);
-                    ResponseClass.Enemy.Direction.Reader dr = er.getDirection();
-                    CommonClass.Direction horizontal = dr.getHorizontal();
-                    CommonClass.Direction vertical = dr.getVertical();
-                    if (er.hasPosition()) {
-                        CommonClass.Position.Reader pr = er.getPosition();
-                        int x = pr.getX();
-                        int y = pr.getY();
-                        LOG.info("Enemy: v={},h={}, x,y=({},{})", horizontal, vertical, x, y);
+    private void updateInfoAndShowStatus(ResponseClass.Response.Reader reader) throws IOException {
+        ResponseClass.Response.Info.Reader infoReader = reader.getInfo();
 
-                        currentEnemies.add(new EnemyField(x, y, horizontal, vertical));
-                    } else {
-                        LOG.info("Enemy: no position");
-                    }
-                    LOG.info("");
-                }
-            } else {
-                LOG.info("No enemies");
+        LOG.info("Level: {}", infoReader.getLevel());
+        LOG.info("Owns: {}", infoReader.getOwns());
+        LOG.info("Tick: {}", infoReader.getTick());
+
+        if (reader.hasStatus()) {
+            String s = reader.getStatus().toString();
+            LOG.info("Status: {}", s);
+            if (s.contains("You are already logged in")) {
+                LOG.warn(s);
+                System.exit(0);
             }
+        } else {
+            LOG.info("Status: none");
+        }
+    }
 
-            if (rr.hasStatus()) {
-                LOG.info("Status: " + rr.getStatus());
-            } else {
-                LOG.info("No status");
-            }
+    private void fillTerrainFields(Field[][] board, ResponseClass.Response.Reader responseReader) {
+        if (responseReader.hasCells()) {
+            ListList.Reader<StructList.Reader<ResponseClass.Cell.Reader>> cellsReader = responseReader.getCells();
+            for (int i = 0; i < cellsReader.size(); i++) {
+                StructList.Reader<ResponseClass.Cell.Reader> rowReader = cellsReader.get(i);
+                for (int j = 0; j < rowReader.size(); j++) {
+                    ResponseClass.Cell.Reader cellReader = rowReader.get(j);
+                    ResponseClass.Cell.Attack.Reader attackReader = cellReader.getAttack();
 
-            if (rr.hasCells()) {
-                ListList.Reader<StructList.Reader<ResponseClass.Cell.Reader>> cells = rr.getCells();
-                OUTER:
-                for (int i = 0; i < cells.size(); i++) {
-                    StructList.Reader<ResponseClass.Cell.Reader> row = cells.get(i);
-                    INNER:
-                    for (int j = 0; j < row.size(); j++) {
-                        ResponseClass.Cell.Reader cr = row.get(j);
-                        ResponseClass.Cell.Attack.Reader ca = cr.getAttack();
+                    int owner = cellReader.getOwner();
+                    Field field = new UnknownField(i, j, owner);
 
-                        int x = j;
-                        int y = i;
-
-                        char c = '?';
-                        TextColor fg = TextColor.ANSI.DEFAULT;
-                        TextColor bg = TextColor.ANSI.DEFAULT;
-
-                        if (has(currentUnits, x, y)) {
-                            c = '@';
-                            fg = TextColor.ANSI.GREEN;
-                        } else if (has(currentEnemies, x, y)) {
-                            c = '@';
-                            fg = TextColor.ANSI.RED;
-                        } else {
-                            if (ca.isUnit()) {
-                                int owner = cr.getOwner();
-                                if (owner == 0) {
-                                    c = '@';
-                                    fg = TextColor.ANSI.GREEN;
-                                } else {
-                                    c = 'Y';
-                                }
-                            } else if (ca.isCan()) {
-                                int owner = cr.getOwner();
-                                boolean can = ca.getCan();
-                                if (owner == 0) {
-                                    if (can) {
-                                        c = ' ';
-                                    } else {
-                                        c = '?';
-                                    }
-                                } else {
-                                    if (can) {
-                                        c = '~';
-                                    } else {
-                                        c = '+';
-                                    }
-                                }
+                    if (attackReader.isUnit()) {
+                        int unit = attackReader.getUnit();
+                        if (owner != TEAM_ID && unit == UNIT_ID) {
+                            field = new TrailField(TextColor.ANSI.GREEN, i, j, owner);
+                        }
+                    } else if (attackReader.isCan()) {
+                        boolean can = attackReader.getCan();
+                        if (can) {
+                            if (owner == 0) {
+                                field = new SeaField(i, j, owner);
                             } else {
-                                throw new IllegalStateException();
+                                field = new LandField(TextColor.ANSI.GREEN, i, j, owner);
+                            }
+                        } else {
+                            if (owner == TEAM_ID) {
+                                field = new SafeField(i, j, owner);
                             }
                         }
-
-                        screen.setCharacter(x, y, new TextCharacter(c, fg, bg));
-                    }
-                    screen.refresh();
-                    screen.doResizeIfNecessary();
-                }
-
-                CommonClass.Direction direction = null;
-                KeyStroke keyStroke = screen.pollInput();
-                if (keyStroke != null && keyStroke.getKeyType() == KeyType.Character) {
-                    switch (keyStroke.getCharacter()) {
-                        case 'w':
-                            direction = CommonClass.Direction.UP;
-                            break;
-                        case 's':
-                            direction = CommonClass.Direction.DOWN;
-                            break;
-                        case 'a':
-                            direction = CommonClass.Direction.LEFT;
-                            break;
-                        case 'd':
-                            direction = CommonClass.Direction.RIGHT;
-                            break;
-                        default:
-                            LOG.info("No direction change");
-                    }
-                }
-
-                if (direction != null) {
-                    if (currentUnits.size() > 1) {
+                    } else {
                         throw new IllegalStateException();
                     }
-                    writeMoveCommand(0, direction);
+
+                    board[i][j] = field;
                 }
             }
         }
+    }
+
+    private void fillUnitFields(Field[][] board, List<UnitField> units, ResponseClass.Response.Reader responseReader) {
+        if (responseReader.hasUnits()) {
+            StructList.Reader<ResponseClass.Unit.Reader> unitsReader = responseReader.getUnits();
+            for (int i = 0; i < unitsReader.size(); i++) {
+                ResponseClass.Unit.Reader unitReader = unitsReader.get(i);
+                int owner = unitReader.getOwner();
+                int health = unitReader.getHealth();
+                int killer = unitReader.getKiller();
+                CommonClass.Direction direction = unitReader.getDirection();
+                if (unitReader.hasPosition()) {
+                    CommonClass.Position.Reader positionReader = unitReader.getPosition();
+                    int row = positionReader.getX();
+                    int col = positionReader.getY();
+                    LOG.info("Unit: owner={},health={}, killer={}, direction={}, row,col=({},{})",
+                            owner,
+                            health,
+                            killer,
+                            direction,
+                            row,
+                            col);
+
+                    UnitField field = new UnitField(TextColor.ANSI.GREEN, row, col, UNIT_ID, direction);
+                    board[row][col] = field;
+                    units.add(field);
+                } else {
+                    LOG.info("Unit: owner={},health={}, killer={}, direction={}, row,col=no position",
+                            owner,
+                            health,
+                            killer,
+                            direction);
+                }
+            }
+        } else {
+            LOG.info("No units");
+        }
+    }
+
+    private void fillEnemyFields(Field[][] board, List<EnemyField> enemies, ResponseClass.Response.Reader responseReader) {
+        if (responseReader.hasEnemies()) {
+            StructList.Reader<ResponseClass.Enemy.Reader> enemiesReader = responseReader.getEnemies();
+            for (int i = 0; i < enemiesReader.size(); i++) {
+                ResponseClass.Enemy.Reader enemyReader = enemiesReader.get(i);
+                ResponseClass.Enemy.Direction.Reader directionReader = enemyReader.getDirection();
+                CommonClass.Direction horizontal = directionReader.getHorizontal();
+                CommonClass.Direction vertical = directionReader.getVertical();
+                if (enemyReader.hasPosition()) {
+                    CommonClass.Position.Reader positionReader = enemyReader.getPosition();
+                    int x = positionReader.getX();
+                    int y = positionReader.getY();
+                    LOG.info("Enemy: vertical={},horizontal={}, row,col=({},{})", horizontal, vertical, x, y);
+                    EnemyField field = new EnemyField(TextColor.ANSI.RED, x, y, horizontal, vertical);
+                    board[x][y] = field;
+                    enemies.add(field);
+                } else {
+                    LOG.info("Enemy: vertical={},horizontal={}, row,col=no position", horizontal, vertical);
+                }
+            }
+        } else {
+            LOG.info("No enemies");
+        }
+    }
+
+    private void checkNullOrUnknownFields(Field[][] board) {
+        for (int i = 0; i < ROWS; i++) {
+            for (int j = 0; j < COLUMNS; j++) {
+                Field field = board[i][j];
+                if (field == null) {
+                    LOG.error("null field at row,col=({},{})", i, j);
+                } else if (field instanceof UnknownField) {
+                    LOG.error("Unknown field at row,col=({},{})", i, j);
+                }
+            }
+        }
+    }
+
+    private void calcTerritory(Field[][] board) {
+        int total = ROWS * COLUMNS;
+        int current = 0;
+        for (int i = 0; i < ROWS; i++) {
+            for (int j = 0; j < COLUMNS; j++) {
+                Field field = board[i][j];
+                if (field instanceof OwnedField) {
+                    OwnedField ownedField = (OwnedField) field;
+                    if (TEAM_ID == ownedField.getOwner()) {
+                        current++;
+                    }
+                }
+            }
+        }
+        LOG.info("Captured territory: {}%", ((double) current / (double) total) * 100.0d);
+    }
+
+    private void sortUnitsById(List<UnitField> units) {
+        units.sort(Comparator.comparingInt(UnitField::getId));
+    }
+
+    private List<CommonClass.Direction> calcUnitDirections(Field[][] board, List<UnitField> units, List<EnemyField> enemies, TerminalScreen screen) throws IOException {
+        List<CommonClass.Direction> directions = new ArrayList<>();
+
+        for (UnitField unit : units) {
+            CommonClass.Direction direction = unit.getDirection();
+
+            KeyStroke keyStroke = screen.pollInput();
+            if (keyStroke != null && keyStroke.getKeyType() == KeyType.Character) {
+                switch (keyStroke.getCharacter()) {
+                    case 'w':
+                        direction = CommonClass.Direction.UP;
+                        break;
+                    case 's':
+                        direction = CommonClass.Direction.DOWN;
+                        break;
+                    case 'a':
+                        direction = CommonClass.Direction.LEFT;
+                        break;
+                    case 'd':
+                        direction = CommonClass.Direction.RIGHT;
+                        break;
+                    default:
+                        direction = null;
+                }
+
+            }
+
+            directions.add(makeSureMoveIsSafe(unit, direction));
+        }
+
+        return directions;
+    }
+
+    private CommonClass.Direction makeSureMoveIsSafe(UnitField unit, CommonClass.Direction direction) {
+        int row = unit.getRow();
+        int column = unit.getColumn();
+        CommonClass.Direction oppositeDirection;
+        switch (direction) {
+            case UP:
+                oppositeDirection = CommonClass.Direction.DOWN;
+                row--;
+                break;
+            case DOWN:
+                oppositeDirection = CommonClass.Direction.UP;
+                row++;
+                break;
+            case LEFT:
+                oppositeDirection = CommonClass.Direction.RIGHT;
+                column--;
+                break;
+            case RIGHT:
+                oppositeDirection = CommonClass.Direction.LEFT;
+                column++;
+                break;
+            default:
+                throw new IllegalStateException();
+        }
+        boolean safe = row >= 0 && column >= 0 && row < ROWS && column < COLUMNS;
+        if (safe) {
+            return direction;
+        }
+        LOG.warn("Unit: id={} would fall off the board, move ({}) not sent, sending opposite direction ({})", unit.getId(), direction, oppositeDirection);
+        return oppositeDirection;
+    }
+
+    private void sendUnitMoveReply(List<CommonClass.Direction> directions) throws IOException {
+        for (int i = 0; i < directions.size(); i++) {
+            CommonClass.Direction direction = directions.get(i);
+            writeMoveCommand(i, direction);
+        }
+    }
+
+    private void displayFields(Field[][] board, TerminalScreen screen) throws IOException {
+        for (int i = 0; i < ROWS; i++) {
+            for (int j = 0; j < COLUMNS; j++) {
+                TextColor fg = TextColor.ANSI.DEFAULT;
+                Field field = board[i][j];
+                screen.setCharacter(j, i, new TextCharacter(field.getSymbol(), field.getFg(), field.getBg()));
+            }
+        }
+
+        screen.doResizeIfNecessary();
+        screen.refresh();
     }
 
     private void writeMoveCommand(int unit, CommonClass.Direction direction) throws IOException {
