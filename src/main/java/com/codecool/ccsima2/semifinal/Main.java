@@ -264,9 +264,9 @@ public class Main extends AbstractMain {
                         direction = CommonClass.Direction.RIGHT;
                         break;
                     default:
-                        direction = null;
+                        LOG.info("Unknown keystroke: {}", keyStroke.getCharacter());
+                        break;
                 }
-
             }
 
             directions.add(makeSureMoveIsSafe(unit, direction));
