@@ -2,6 +2,7 @@ package com.codecool.ccsima2.semifinal;
 
 import com.codecool.ccsima2.AbstractMain;
 import com.codecool.ccsima2.semifinal.field.*;
+import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextCharacter;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.input.KeyStroke;
@@ -9,12 +10,14 @@ import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.TerminalScreen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
 import com.googlecode.lanterna.terminal.Terminal;
+import com.googlecode.lanterna.terminal.swing.SwingTerminalFrame;
 import org.capnproto.ListList;
 import org.capnproto.MessageBuilder;
 import org.capnproto.StructList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.*;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -71,8 +74,13 @@ public class Main extends AbstractMain {
     }
 
     private TerminalScreen createDisplay() throws IOException {
-        DefaultTerminalFactory defaultTerminalFactory = new DefaultTerminalFactory();
-        Terminal terminal = defaultTerminalFactory.createTerminal();
+        DefaultTerminalFactory factory = new DefaultTerminalFactory();
+        factory.setInitialTerminalSize(new TerminalSize(COLUMNS, ROWS));
+        final Terminal terminal = factory.createTerminal();
+        if (terminal instanceof SwingTerminalFrame) {
+            SwingTerminalFrame frame = (SwingTerminalFrame) terminal;
+            frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+        }
         TerminalScreen screen = new TerminalScreen(terminal);
         screen.setCursorPosition(null);
         screen.startScreen();
