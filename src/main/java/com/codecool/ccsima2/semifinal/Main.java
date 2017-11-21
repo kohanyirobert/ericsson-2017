@@ -5,6 +5,7 @@ import com.codecool.ccsima2.semifinal.field.*;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextCharacter;
 import com.googlecode.lanterna.TextColor;
+import com.googlecode.lanterna.graphics.TextGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.TerminalScreen;
@@ -31,8 +32,8 @@ public class Main extends AbstractMain {
     private static final int UNIT_ID = 0;
     private static final int TEAM_ID = 1;
 
-    private static final int ROWS = 80;
     private static final int COLUMNS = 100;
+    private static final int ROWS = 80;
 
     private static final int ROW_PADDING = 2;
     private static final int COLUMN_PADDING = 2;
@@ -67,15 +68,16 @@ public class Main extends AbstractMain {
         List<UnitField> units = new ArrayList<>();
         List<EnemyField> enemies = new ArrayList<>();
         do {
+            clearOffBoard(screen);
             clearFields(board);
             units.clear();
             enemies.clear();
             LOG.info("Reading response");
             ResponseClass.Response.Reader responseReader = readResponse(ResponseClass.Response.factory);
-            updateInfoAndShowStatus(responseReader);
+            updateInfoAndShowStatus(responseReader, screen);
             fillTerrainFields(board, responseReader);
             fillEnemyFields(board, enemies, responseReader);
-            fillUnitFields(board, units, responseReader);
+            fillUnitFields(board, units, responseReader, screen);
             checkNullOrUnknownFields(board);
             calcTerritory(board);
             sortUnitsById(units);
@@ -86,9 +88,17 @@ public class Main extends AbstractMain {
         } while (true);
     }
 
+    private void clearOffBoard(TerminalScreen screen) {
+        for (int i = COLUMNS + 1; i < COLUMNS * 2; i++) {
+            for (int j = 0; j < ROWS; j++) {
+                screen.setCharacter(i, j, new TextCharacter(' '));
+            }
+        }
+    }
+
     private TerminalScreen createDisplay() throws IOException {
         DefaultTerminalFactory factory = new DefaultTerminalFactory();
-        factory.setInitialTerminalSize(new TerminalSize(COLUMNS, ROWS));
+        factory.setInitialTerminalSize(new TerminalSize(COLUMNS * 2, ROWS));
         final Terminal terminal = factory.createTerminal();
         if (terminal instanceof SwingTerminalFrame) {
             SwingTerminalFrame frame = (SwingTerminalFrame) terminal;
@@ -108,22 +118,35 @@ public class Main extends AbstractMain {
         }
     }
 
-    private void updateInfoAndShowStatus(ResponseClass.Response.Reader reader) throws IOException {
+    private void updateInfoAndShowStatus(ResponseClass.Response.Reader reader, TerminalScreen screen) throws IOException {
         ResponseClass.Response.Info.Reader infoReader = reader.getInfo();
+
+        TextGraphics graphics = screen.newTextGraphics();
 
         LOG.info("Level: {}", infoReader.getLevel());
         LOG.info("Owns: {}", infoReader.getOwns());
         LOG.info("Tick: {}", infoReader.getTick());
 
+        int graphicsRow = 0;
+
+        graphics.putString(COLUMNS + 1, graphicsRow++, String.format("Level: %s", infoReader.getLevel()));
+        graphics.putString(COLUMNS + 1, graphicsRow++, String.format("Owns: %s", infoReader.getOwns()));
+        graphics.putString(COLUMNS + 1, graphicsRow++, String.format("Tick: %s", infoReader.getTick()));
+
         if (reader.hasStatus()) {
             String s = reader.getStatus().toString();
             LOG.info("Status: {}", s);
+
+            graphics.putString(COLUMNS + 1, graphicsRow++, String.format("Status: %s", s));
+
             if (s.contains("You are already logged in")) {
                 LOG.warn(s);
                 System.exit(0);
             }
         } else {
             LOG.info("Status: none");
+
+            graphics.putString(COLUMNS + 1, graphicsRow++, "Status: none");
         }
     }
 
@@ -167,7 +190,11 @@ public class Main extends AbstractMain {
         }
     }
 
-    private void fillUnitFields(Field[][] board, List<UnitField> units, ResponseClass.Response.Reader responseReader) {
+    private void fillUnitFields(Field[][] board, List<UnitField> units, ResponseClass.Response.Reader responseReader, TerminalScreen screen) {
+        TextGraphics graphics = screen.newTextGraphics();
+
+        int graphicsRow = 5;
+
         if (responseReader.hasUnits()) {
             StructList.Reader<ResponseClass.Unit.Reader> unitsReader = responseReader.getUnits();
             for (int i = 0; i < unitsReader.size(); i++) {
@@ -180,7 +207,9 @@ public class Main extends AbstractMain {
                     CommonClass.Position.Reader positionReader = unitReader.getPosition();
                     int row = positionReader.getX();
                     int col = positionReader.getY();
-                    LOG.info("Unit: owner={},health={}, killer={}, direction={}, row,col=({},{})",
+
+                    String s = String.format("Unit: id=%s, owner=%s, health=%s, killer=%s, direction=%s, row,col=(%s,%s)",
+                            i,
                             owner,
                             health,
                             killer,
@@ -188,15 +217,22 @@ public class Main extends AbstractMain {
                             row,
                             col);
 
-                    UnitField field = new UnitField(TextColor.ANSI.GREEN, row, col, UNIT_ID, direction);
+                    LOG.info(s);
+                    graphics.putString(COLUMNS + 1, graphicsRow++, s);
+
+                    UnitField field = new UnitField(TextColor.ANSI.GREEN, row, col, i, direction);
                     board[row][col] = field;
                     units.add(field);
                 } else {
-                    LOG.info("Unit: owner={},health={}, killer={}, direction={}, row,col=no position",
+                    String s = String.format("Unit: id=%s, owner=%s, health=%s, killer=%s, direction=%s, row,col=no position",
+                            i,
                             owner,
                             health,
                             killer,
                             direction);
+
+                    LOG.info(s);
+                    graphics.putString(COLUMNS + 1, graphicsRow++, s);
                 }
             }
         } else {
