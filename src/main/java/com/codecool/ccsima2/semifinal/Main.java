@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class Main extends AbstractMain {
 
@@ -36,23 +37,26 @@ public class Main extends AbstractMain {
     private static final int ROW_PADDING = 2;
     private static final int COLUMN_PADDING = 2;
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, InterruptedException {
         String team = args[0];
         String hash = args[1];
         String host = args[2];
-        boolean ai = false;
         int port = Integer.valueOf(args[3]);
-        new Main(team, hash, host, port, ai).solve();
+        long delay = Long.valueOf(args[4]);
+        boolean ai = false;
+        new Main(team, hash, host, port, delay, ai).solve();
     }
 
+    private final long delay;
     private final boolean ai;
 
-    private Main(String team, String hash, String host, int port, boolean ai) {
+    private Main(String team, String hash, String host, int port, long delay, boolean ai) {
         super(team, hash, host, port);
+        this.delay = delay;
         this.ai = ai;
     }
 
-    protected void solve() throws IOException {
+    protected void solve() throws IOException, InterruptedException {
         LOG.info("Connecting");
         connectToClient();
         LOG.info("Logging in");
@@ -78,6 +82,7 @@ public class Main extends AbstractMain {
             List<CommonClass.Direction> directions = calcUnitDirections(board, units, enemies, screen);
             displayFields(board, screen);
             sendUnitMoveReply(directions);
+            TimeUnit.MILLISECONDS.sleep(delay);
         } while (true);
     }
 

@@ -29,7 +29,7 @@ public abstract class AbstractMain {
         addr = new InetSocketAddress(host, port);
     }
 
-    protected abstract void solve() throws IOException;
+    protected abstract void solve() throws IOException, InterruptedException;
 
     protected void connectToClient() throws IOException {
         sc = SocketChannel.open(addr);
