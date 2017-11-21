@@ -29,19 +29,27 @@ public class Main extends AbstractMain {
 
     private static final int UNIT_ID = 0;
     private static final int TEAM_ID = 1;
+
     private static final int ROWS = 80;
     private static final int COLUMNS = 100;
+
+    private static final int ROW_PADDING = 2;
+    private static final int COLUMN_PADDING = 2;
 
     public static void main(String[] args) throws IOException {
         String team = args[0];
         String hash = args[1];
         String host = args[2];
+        boolean ai = false;
         int port = Integer.valueOf(args[3]);
-        new Main(team, hash, host, port).solve();
+        new Main(team, hash, host, port, ai).solve();
     }
 
-    private Main(String team, String hash, String host, int port) {
+    private final boolean ai;
+
+    private Main(String team, String hash, String host, int port, boolean ai) {
         super(team, hash, host, port);
+        this.ai = ai;
     }
 
     protected void solve() throws IOException {
@@ -254,33 +262,64 @@ public class Main extends AbstractMain {
         List<CommonClass.Direction> directions = new ArrayList<>();
 
         for (UnitField unit : units) {
-            CommonClass.Direction direction = unit.getDirection();
-
-            KeyStroke keyStroke = screen.pollInput();
-            if (keyStroke != null && keyStroke.getKeyType() == KeyType.Character) {
-                switch (keyStroke.getCharacter()) {
-                    case 'w':
-                        direction = CommonClass.Direction.UP;
-                        break;
-                    case 's':
-                        direction = CommonClass.Direction.DOWN;
-                        break;
-                    case 'a':
-                        direction = CommonClass.Direction.LEFT;
-                        break;
-                    case 'd':
-                        direction = CommonClass.Direction.RIGHT;
-                        break;
-                    default:
-                        LOG.info("Unknown keystroke: {}", keyStroke.getCharacter());
-                        break;
-                }
+            CommonClass.Direction direction;
+            if (ai) {
+                direction = calUnitDirectionAi(board, unit, enemies);
+            } else {
+                direction = calcUnitDirectionImre(board, unit, screen);
             }
-
             directions.add(makeSureMoveIsSafe(unit, direction));
         }
 
         return directions;
+    }
+
+    private boolean canCapture(
+            Field[][] board,
+            UnitField unit,
+            List<EnemyField> enemies) {
+        return false;
+    }
+
+    private CommonClass.Direction calUnitDirectionAi(Field[][] board, UnitField unit, List<EnemyField> enemies) {
+        EnemyField enemyField = enemies.get(0);
+        int row = unit.getRow();
+        int col = unit.getColumn();
+
+        for (int i = ROW_PADDING; i < ROWS - ROW_PADDING; i++) {
+            for (int j = COLUMN_PADDING; j < COLUMNS - COLUMN_PADDING; j++) {
+
+            }
+        }
+
+        return null;
+    }
+
+    private CommonClass.Direction calcUnitDirectionImre(Field[][] board, UnitField unit, TerminalScreen screen) throws IOException {
+        CommonClass.Direction direction = unit.getDirection();
+
+        KeyStroke keyStroke = screen.pollInput();
+        if (keyStroke != null && keyStroke.getKeyType() == KeyType.Character) {
+            switch (keyStroke.getCharacter()) {
+                case 'w':
+                    direction = CommonClass.Direction.UP;
+                    break;
+                case 's':
+                    direction = CommonClass.Direction.DOWN;
+                    break;
+                case 'a':
+                    direction = CommonClass.Direction.LEFT;
+                    break;
+                case 'd':
+                    direction = CommonClass.Direction.RIGHT;
+                    break;
+                default:
+                    LOG.info("Unknown keystroke: {}", keyStroke.getCharacter());
+                    break;
+            }
+        }
+
+        return direction;
     }
 
     private CommonClass.Direction makeSureMoveIsSafe(UnitField unit, CommonClass.Direction direction) {
